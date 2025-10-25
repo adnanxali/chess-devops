@@ -232,7 +232,7 @@ set INSTANCE_IP=${instanceIp}
 set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key%
 set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key%
 echo Deploying to instance %INSTANCE_ID% at %INSTANCE_IP%
-aws ssm send-command --instance-ids %INSTANCE_ID% --document-name "AWS-RunShellScript" --parameters "commands=['cd /home/ubuntu/Chess','git pull origin main','sudo docker-compose down','sudo docker system prune -f','sudo docker-compose build --no-cache','sudo docker-compose up -d --force-recreate']" --region %AWS_DEFAULT_REGION%
+aws ssm send-command --instance-ids %INSTANCE_ID% --document-name "AWS-RunShellScript" --parameters "commands=['cd /home/ubuntu/Chess','git fetch origin','git reset --hard origin/main','sudo docker-compose down','sudo docker system prune -f','sudo docker-compose build --no-cache','sudo docker-compose up -d --force-recreate']" --region %AWS_DEFAULT_REGION%
 echo Deployment command sent successfully
 """
                         }
