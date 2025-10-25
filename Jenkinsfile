@@ -17,8 +17,8 @@ pipeline {
     parameters {
         choice(
             name: 'DEPLOYMENT_TYPE',
-            choices: ['infrastructure-only', 'application-only', 'full-deployment'],
-            description: 'Choose deployment type'
+            choices: ['application-only', 'full-deployment', 'infrastructure-only'],
+            description: 'Choose deployment type (application-only is default for auto-deployment)'
         )
         choice(
             name: 'ENVIRONMENT',
@@ -52,6 +52,23 @@ pipeline {
                         env.GIT_COMMIT_SHORT = env.BUILD_NUMBER
                         echo "Could not get git commit, using build number: ${env.GIT_COMMIT_SHORT}"
                     }
+                    
+                    // Auto-detect if this is a SCM-triggered build for code changes
+                    def buildCause = currentBuild.getBuildCauses('hudson.triggers.SCMTrigger$SCMTriggerCause')
+                    if (buildCause) {
+                        echo "SCM-triggered build detected - forcing application-only deployment"
+                        env.AUTO_DEPLOYMENT_TYPE = 'application-only'
+                        env.AUTO_ENVIRONMENT = 'dev'
+                        env.AUTO_DESTROY = 'false'
+                    } else {
+                        echo "Manual build - using selected parameters"
+                        env.AUTO_DEPLOYMENT_TYPE = params.DEPLOYMENT_TYPE
+                        env.AUTO_ENVIRONMENT = params.ENVIRONMENT
+                        env.AUTO_DESTROY = params.DESTROY_INFRASTRUCTURE.toString()
+                    }
+                    
+                    echo "Effective deployment type: ${env.AUTO_DEPLOYMENT_TYPE}"
+                    echo "Effective environment: ${env.AUTO_ENVIRONMENT}"
                 }
             }
         }
@@ -84,18 +101,18 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 script {
-                    if (params.DEPLOYMENT_TYPE == 'infrastructure-only' || params.DEPLOYMENT_TYPE == 'full-deployment') {
+                    if (env.AUTO_DEPLOYMENT_TYPE == 'infrastructure-only' || env.AUTO_DEPLOYMENT_TYPE == 'full-deployment') {
                         dir('terraform') {
                             if (params.DESTROY_INFRASTRUCTURE) {
                                 bat '''
                                     terraform init -reconfigure
-                                    terraform plan -destroy -var="environment=%ENVIRONMENT%" -out=destroy.tfplan
+                                    terraform plan -destroy -var="environment=%AUTO_ENVIRONMENT%" -out=destroy.tfplan
                                 '''
                             } else {
                                 bat '''
                                     terraform init -reconfigure
-                                    terraform refresh -var="environment=%ENVIRONMENT%" || echo "Refresh failed, continuing..."
-                                    terraform plan -var="environment=%ENVIRONMENT%" -out=tfplan
+                                    terraform refresh -var="environment=%AUTO_ENVIRONMENT%" || echo "Refresh failed, continuing..."
+                                    terraform plan -var="environment=%AUTO_ENVIRONMENT%" -out=tfplan
                                 '''
                             }
                         }
@@ -107,7 +124,7 @@ pipeline {
         stage('Terraform Apply') {
             steps {
                 script {
-                    if (params.DEPLOYMENT_TYPE == 'infrastructure-only' || params.DEPLOYMENT_TYPE == 'full-deployment') {
+                    if (env.AUTO_DEPLOYMENT_TYPE == 'infrastructure-only' || env.AUTO_DEPLOYMENT_TYPE == 'full-deployment') {
                         dir('terraform') {
                             if (params.DESTROY_INFRASTRUCTURE) {
                                 bat '''
@@ -132,7 +149,7 @@ pipeline {
        stage('Wait for Instance') {
     steps {
         script {
-            if ((params.DEPLOYMENT_TYPE == 'infrastructure-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
+            if ((env.AUTO_DEPLOYMENT_TYPE == 'infrastructure-only' || env.AUTO_DEPLOYMENT_TYPE == 'full-deployment') && env.AUTO_DESTROY != 'true') {
                 dir('terraform') {
                     def instanceIp = bat(
                         script: 'terraform output -raw instance_ip',
@@ -162,7 +179,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
-                        if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
+                        if ((env.AUTO_DEPLOYMENT_TYPE == 'application-only' || env.AUTO_DEPLOYMENT_TYPE == 'full-deployment') && env.AUTO_DESTROY != 'true') {
                             bat """
                                 docker-compose build --no-cache
                                 echo Docker images built successfully
@@ -177,7 +194,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
                     script {
-                        if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
+                        if ((env.AUTO_DEPLOYMENT_TYPE == 'application-only' || env.AUTO_DEPLOYMENT_TYPE == 'full-deployment') && env.AUTO_DESTROY != 'true') {
                             // Use known values for application-only deployment
                             def instanceIp = env.INSTANCE_IP ?: "54.152.24.141"
                             def instanceId = env.INSTANCE_ID ?: "i-008703f8ee127381c"
@@ -185,12 +202,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
                             // Try to get from AWS CLI dynamically
                             try {
                                 def awsInstanceId = bat(
-                                    script: 'set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key% && set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key% && aws ec2 describe-instances --filters "Name=tag:Application,Values=chess" "Name=tag:Environment,Values=%ENVIRONMENT%" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text --region %AWS_DEFAULT_REGION%',
+                                    script: 'set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key% && set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key% && aws ec2 describe-instances --filters "Name=tag:Application,Values=chess" "Name=tag:Environment,Values=%AUTO_ENVIRONMENT%" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text --region %AWS_DEFAULT_REGION%',
                                     returnStdout: true
                                 ).trim()
                                 
                                 def awsInstanceIp = bat(
-                                    script: 'set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key% && set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key% && aws ec2 describe-instances --filters "Name=tag:Application,Values=chess" "Name=tag:Environment,Values=%ENVIRONMENT%" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].PublicIpAddress" --output text --region %AWS_DEFAULT_REGION%',
+                                    script: 'set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key% && set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key% && aws ec2 describe-instances --filters "Name=tag:Application,Values=chess" "Name=tag:Environment,Values=%AUTO_ENVIRONMENT%" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].PublicIpAddress" --output text --region %AWS_DEFAULT_REGION%',
                                     returnStdout: true
                                 ).trim()
                                 
