@@ -5,7 +5,16 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.1"
+    }
   }
+}
+
+# Random suffix to avoid naming conflicts
+resource "random_id" "suffix" {
+  byte_length = 4
 }
 
 provider "aws" {
@@ -21,7 +30,7 @@ locals {
 
 # Security Group for Chess Application
 resource "aws_security_group" "chess_sg" {
-  name_prefix = "chess-${var.environment}-"
+  name_prefix = "chess-${var.environment}-${random_id.suffix.hex}-"
   description = "Security group for Chess application"
 
   # SSH access
@@ -66,7 +75,7 @@ resource "aws_security_group" "chess_sg" {
 
 # IAM Role for EC2 Instance
 resource "aws_iam_role" "chess_instance_role" {
-  name = "chess-${var.environment}-instance-role"
+  name = "chess-${var.environment}-instance-role-${random_id.suffix.hex}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -95,7 +104,7 @@ resource "aws_iam_role_policy_attachment" "chess_ssm_policy" {
 
 # Instance profile
 resource "aws_iam_instance_profile" "chess_instance_profile" {
-  name = "chess-${var.environment}-instance-profile"
+  name = "chess-${var.environment}-instance-profile-${random_id.suffix.hex}"
   role = aws_iam_role.chess_instance_role.name
 
   tags = {

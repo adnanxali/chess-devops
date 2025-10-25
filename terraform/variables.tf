@@ -44,7 +44,7 @@ variable "volume_size" {
 variable "git_repo" {
   description = "Git repository URL"
   type        = string
-  default     = "https://github.com/akshatsri47/Chess.git"
+  default     = "https://github.com/adnanxali/chess-devops"
 }
 
 variable "branch" {

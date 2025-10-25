@@ -37,10 +37,12 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    env.GIT_COMMIT_SHORT = bat(
+                    def gitCommit = bat(
                         script: 'git rev-parse --short HEAD',
                         returnStdout: true
                     ).trim()
+                    env.GIT_COMMIT_SHORT = gitCommit
+                    echo "Git commit: ${env.GIT_COMMIT_SHORT}"
                 }
             }
         }
@@ -77,12 +79,13 @@ pipeline {
                         dir('terraform') {
                             if (params.DESTROY_INFRASTRUCTURE) {
                                 bat '''
-                                    terraform init
+                                    terraform init -reconfigure
                                     terraform plan -destroy -var="environment=%ENVIRONMENT%" -out=destroy.tfplan
                                 '''
                             } else {
                                 bat '''
-                                    terraform init
+                                    terraform init -reconfigure
+                                    terraform refresh -var="environment=%ENVIRONMENT%" || echo "Refresh failed, continuing..."
                                     terraform plan -var="environment=%ENVIRONMENT%" -out=tfplan
                                 '''
                             }
@@ -152,8 +155,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
                     if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
                         bat """
                             docker-compose build --no-cache
-                            docker tag chess_frontend:latest chess_frontend:%GIT_COMMIT_SHORT%
-                            docker tag chess_backend:latest chess_backend:%GIT_COMMIT_SHORT%
+                            docker tag chess-dev-frontend:latest chess-dev-frontend:%GIT_COMMIT_SHORT%
+                            docker tag chess-dev-backend:latest chess-dev-backend:%GIT_COMMIT_SHORT%
                         """
                     }
                 }
