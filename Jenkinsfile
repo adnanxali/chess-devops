@@ -1,5 +1,10 @@
 pipeline {
     agent any
+    
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        skipDefaultCheckout()
+    }
 
     environment {
         AWS_DEFAULT_REGION = 'us-east-1'
@@ -28,7 +33,7 @@ pipeline {
     }
 
     triggers {
-    pollSCM('H/2 * * * *') // poll every 2 minutes
+    pollSCM('* * * * *') // poll every minute
 }
 
     stages {
@@ -37,12 +42,16 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    def gitCommit = bat(
-                        script: 'git rev-parse --short HEAD',
-                        returnStdout: true
-                    ).trim()
-                    env.GIT_COMMIT_SHORT = gitCommit
-                    echo "Git commit: ${env.GIT_COMMIT_SHORT}"
+                    try {
+                        env.GIT_COMMIT_SHORT = bat(
+                            script: 'git rev-parse --short HEAD',
+                            returnStdout: true
+                        ).trim()
+                        echo "Git commit: ${env.GIT_COMMIT_SHORT}"
+                    } catch (Exception e) {
+                        env.GIT_COMMIT_SHORT = env.BUILD_NUMBER
+                        echo "Could not get git commit, using build number: ${env.GIT_COMMIT_SHORT}"
+                    }
                 }
             }
         }
@@ -151,13 +160,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
 
         stage('Build Docker Images') {
             steps {
-                script {
-                    if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
-                        bat """
-                            docker-compose build --no-cache
-                            docker tag chess-dev-frontend:latest chess-dev-frontend:%GIT_COMMIT_SHORT%
-                            docker tag chess-dev-backend:latest chess-dev-backend:%GIT_COMMIT_SHORT%
-                        """
+                timeout(time: 10, unit: 'MINUTES') {
+                    script {
+                        if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
+                            bat """
+                                docker-compose build --no-cache
+                                echo Docker images built successfully
+                            """
+                        }
                     }
                 }
             }
@@ -165,30 +175,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
 
         stage('Deploy Application') {
             steps {
-                script {
-                    if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
-                        def instanceIp = env.INSTANCE_IP ?: bat(
-                            script: 'cd terraform && terraform output -raw instance_ip',
-                            returnStdout: true
-                        ).trim()
-                        def instanceId = bat(
-                            script: 'cd terraform && terraform output -raw instance_id',
-                            returnStdout: true
-                        ).trim()
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
+                            def instanceIp = env.INSTANCE_IP ?: bat(
+                                script: 'cd terraform && terraform output -raw instance_ip',
+                                returnStdout: true
+                            ).trim()
+                            def instanceId = bat(
+                                script: 'cd terraform && terraform output -raw instance_id',
+                                returnStdout: true
+                            ).trim()
 
-                        // Clean up values
-                        instanceIp = instanceIp.replaceAll(/.*?(\d+\.\d+\.\d+\.\d+).*/, '$1')
-                        instanceId = instanceId.replaceAll(/.*?(i-[a-z0-9]+).*/, '$1')
+                            // Clean up values
+                            instanceIp = instanceIp.replaceAll(/.*?(\d+\.\d+\.\d+\.\d+).*/, '$1')
+                            instanceId = instanceId.replaceAll(/.*?(i-[a-z0-9]+).*/, '$1')
 
-                        env.INSTANCE_IP = instanceIp
-                        env.INSTANCE_ID = instanceId
+                            env.INSTANCE_IP = instanceIp
+                            env.INSTANCE_ID = instanceId
 
-                        echo "Deploying to instance ${instanceId} at IP ${instanceIp}"
+                            echo "Deploying to instance ${instanceId} at IP ${instanceIp}"
 
-                        bat """
-aws ssm send-command --instance-ids %INSTANCE_ID% --document-name "AWS-RunShellScript" --parameters "commands=['cd /home/ubuntu', 'sudo docker-compose down || true', 'sudo docker-compose pull || true', 'export WEBSOCKET_URL=ws://%INSTANCE_IP%:8181', 'sudo docker-compose up -d']" --region %AWS_DEFAULT_REGION%
-timeout 60
+                            bat """
+echo Deploying to instance %INSTANCE_ID% at %INSTANCE_IP%
+aws ssm send-command --instance-ids %INSTANCE_ID% --document-name "AWS-RunShellScript" --parameters commands="cd /home/ubuntu/Chess && git pull origin main && sudo docker-compose down && sudo docker-compose build && sudo docker-compose up -d" --region %AWS_DEFAULT_REGION%
+echo Deployment command sent successfully
 """
+                        }
                     }
                 }
             }

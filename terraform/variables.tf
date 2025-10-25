@@ -53,3 +53,9 @@ variable "branch" {
   default     = "main"
 }
 
+variable "deploy_jenkins" {
+  description = "Whether to deploy Jenkins server"
+  type        = bool
+  default     = false
+}
+
