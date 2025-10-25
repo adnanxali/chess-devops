@@ -178,29 +178,45 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
                 timeout(time: 5, unit: 'MINUTES') {
                     script {
                         if ((params.DEPLOYMENT_TYPE == 'application-only' || params.DEPLOYMENT_TYPE == 'full-deployment') && !params.DESTROY_INFRASTRUCTURE) {
-                            def instanceIp = env.INSTANCE_IP ?: bat(
-                                script: 'cd terraform && terraform output -raw instance_ip',
-                                returnStdout: true
-                            ).trim()
-                            def instanceId = bat(
-                                script: 'cd terraform && terraform output -raw instance_id',
-                                returnStdout: true
-                            ).trim()
-
-                            // Clean up values
-                            instanceIp = instanceIp.replaceAll(/.*?(\d+\.\d+\.\d+\.\d+).*/, '$1')
-                            instanceId = instanceId.replaceAll(/.*?(i-[a-z0-9]+).*/, '$1')
+                            // Use known values for application-only deployment
+                            def instanceIp = env.INSTANCE_IP ?: "54.152.24.141"
+                            def instanceId = env.INSTANCE_ID ?: "i-008703f8ee127381c"
+                            
+                            // Try to get from Terraform if available
+                            try {
+                                def tfIp = bat(
+                                    script: 'cd terraform && terraform output -raw instance_ip 2>nul',
+                                    returnStdout: true
+                                ).trim()
+                                def tfId = bat(
+                                    script: 'cd terraform && terraform output -raw instance_id 2>nul',
+                                    returnStdout: true
+                                ).trim()
+                                
+                                if (tfIp && !tfIp.contains("Warning") && !tfIp.contains("No outputs")) {
+                                    instanceIp = tfIp.replaceAll(/[^0-9.]/, '')
+                                }
+                                if (tfId && !tfId.contains("Warning") && !tfId.contains("No outputs")) {
+                                    instanceId = tfId.replaceAll(/[^i\-a-z0-9]/, '')
+                                }
+                            } catch (Exception e) {
+                                echo "Could not get Terraform outputs, using known values"
+                            }
 
                             env.INSTANCE_IP = instanceIp
                             env.INSTANCE_ID = instanceId
 
                             echo "Deploying to instance ${instanceId} at IP ${instanceIp}"
 
-                            bat """
+                            bat '''
 echo Deploying to instance %INSTANCE_ID% at %INSTANCE_IP%
-aws ssm send-command --instance-ids %INSTANCE_ID% --document-name "AWS-RunShellScript" --parameters commands="cd /home/ubuntu/Chess && git pull origin main && sudo docker-compose down && sudo docker-compose build && sudo docker-compose up -d" --region %AWS_DEFAULT_REGION%
+aws ssm send-command ^
+    --instance-ids %INSTANCE_ID% ^
+    --document-name "AWS-RunShellScript" ^
+    --parameters commands="cd /home/ubuntu/Chess && git pull origin main && sudo docker-compose down && sudo docker-compose build && sudo docker-compose up -d" ^
+    --region %AWS_DEFAULT_REGION%
 echo Deployment command sent successfully
-"""
+'''
                         }
                     }
                 }
