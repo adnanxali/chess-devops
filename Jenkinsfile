@@ -208,15 +208,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
 
                             echo "Deploying to instance ${instanceId} at IP ${instanceIp}"
 
-                            bat '''
+                            bat """
+set INSTANCE_ID=${instanceId}
+set INSTANCE_IP=${instanceIp}
 echo Deploying to instance %INSTANCE_ID% at %INSTANCE_IP%
-aws ssm send-command ^
-    --instance-ids %INSTANCE_ID% ^
-    --document-name "AWS-RunShellScript" ^
-    --parameters commands="cd /home/ubuntu/Chess && git pull origin main && sudo docker-compose down && sudo docker-compose build && sudo docker-compose up -d" ^
-    --region %AWS_DEFAULT_REGION%
+aws ssm send-command --instance-ids %INSTANCE_ID% --document-name "AWS-RunShellScript" --parameters "commands=['cd /home/ubuntu/Chess','git pull origin main','sudo docker-compose down','sudo docker-compose build','sudo docker-compose up -d']" --region %AWS_DEFAULT_REGION%
 echo Deployment command sent successfully
-'''
+"""
                         }
                     }
                 }
