@@ -196,8 +196,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
                     script {
                         if ((env.AUTO_DEPLOYMENT_TYPE == 'application-only' || env.AUTO_DEPLOYMENT_TYPE == 'full-deployment') && env.AUTO_DESTROY != 'true') {
                             // Use known values for application-only deployment
-                            def instanceIp = env.INSTANCE_IP ?: "54.152.24.141"
-                            def instanceId = env.INSTANCE_ID ?: "i-008703f8ee127381c"
+                            def instanceIp = env.INSTANCE_IP ?: "13.223.32.169"
+                            def instanceId = env.INSTANCE_ID ?: "i-03574f4dbb0d201c9"
                             
                             // Try to get from AWS CLI dynamically
                             try {
