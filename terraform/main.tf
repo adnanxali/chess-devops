@@ -156,7 +156,7 @@ resource "aws_instance" "chess_app" {
 
     # Clone Chess app repository
     echo "Cloning Chess app repository..." >> $LOGFILE 2>&1
-    git clone https://github.com/akshatsri47/Chess.git /home/ubuntu/Chess >> $LOGFILE 2>&1
+    git clone https://github.com/adnanxali/chess-devops.git /home/ubuntu/Chess >> $LOGFILE 2>&1
     cd /home/ubuntu/Chess
 
     # Build and start Chess app
