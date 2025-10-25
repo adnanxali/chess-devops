@@ -182,25 +182,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
                             def instanceIp = env.INSTANCE_IP ?: "54.152.24.141"
                             def instanceId = env.INSTANCE_ID ?: "i-008703f8ee127381c"
                             
-                            // Try to get from Terraform if available
+                            // Try to get from AWS CLI dynamically
                             try {
-                                def tfIp = bat(
-                                    script: 'cd terraform && terraform output -raw instance_ip 2>nul',
-                                    returnStdout: true
-                                ).trim()
-                                def tfId = bat(
-                                    script: 'cd terraform && terraform output -raw instance_id 2>nul',
+                                def awsInstanceId = bat(
+                                    script: 'set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key% && set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key% && aws ec2 describe-instances --filters "Name=tag:Application,Values=chess" "Name=tag:Environment,Values=%ENVIRONMENT%" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text --region %AWS_DEFAULT_REGION%',
                                     returnStdout: true
                                 ).trim()
                                 
-                                if (tfIp && !tfIp.contains("Warning") && !tfIp.contains("No outputs")) {
-                                    instanceIp = tfIp.replaceAll(/[^0-9.]/, '')
+                                def awsInstanceIp = bat(
+                                    script: 'set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key% && set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key% && aws ec2 describe-instances --filters "Name=tag:Application,Values=chess" "Name=tag:Environment,Values=%ENVIRONMENT%" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].PublicIpAddress" --output text --region %AWS_DEFAULT_REGION%',
+                                    returnStdout: true
+                                ).trim()
+                                
+                                if (awsInstanceId && !awsInstanceId.contains("None") && awsInstanceId.startsWith("i-")) {
+                                    instanceId = awsInstanceId
                                 }
-                                if (tfId && !tfId.contains("Warning") && !tfId.contains("No outputs")) {
-                                    instanceId = tfId.replaceAll(/[^i\-a-z0-9]/, '')
+                                if (awsInstanceIp && !awsInstanceIp.contains("None") && awsInstanceIp.matches(/\d+\.\d+\.\d+\.\d+/)) {
+                                    instanceIp = awsInstanceIp
                                 }
                             } catch (Exception e) {
-                                echo "Could not get Terraform outputs, using known values"
+                                echo "Could not get AWS instance details, using fallback values: ${e.message}"
                             }
 
                             env.INSTANCE_IP = instanceIp
@@ -211,6 +212,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "\$i=0; while (\$i -lt 10
                             bat """
 set INSTANCE_ID=${instanceId}
 set INSTANCE_IP=${instanceIp}
+set AWS_ACCESS_KEY_ID=%TF_VAR_aws_access_key%
+set AWS_SECRET_ACCESS_KEY=%TF_VAR_aws_secret_key%
 echo Deploying to instance %INSTANCE_ID% at %INSTANCE_IP%
 aws ssm send-command --instance-ids %INSTANCE_ID% --document-name "AWS-RunShellScript" --parameters "commands=['cd /home/ubuntu/Chess','git pull origin main','sudo docker-compose down','sudo docker-compose build','sudo docker-compose up -d']" --region %AWS_DEFAULT_REGION%
 echo Deployment command sent successfully
