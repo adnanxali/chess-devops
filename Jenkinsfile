@@ -306,4 +306,4 @@ Git Commit: ${env.GIT_COMMIT_SHORT}
             bat 'del tfplan destroy.tfplan .env 2>nul || echo Files not found'
         }
     }
-}
+}   
