@@ -88,12 +88,8 @@ pipeline {
 
                         where aws >nul 2>&1
                         if %errorlevel% neq 0 (
-                            echo Installing AWS CLI...
-                            powershell -Command "Invoke-WebRequest -Uri 'https://awscli.amazonaws.com/AWSCLIV2.msi' -OutFile 'AWSCLIV2.msi'"
-                            msiexec /i AWSCLIV2.msi /quiet /norestart
-                            del AWSCLIV2.msi
-                            echo Refreshing PATH...
-                            refreshenv
+                            echo AWS CLI not found. Please install manually from https://awscli.amazonaws.com/AWSCLIV2.msi
+                            echo Attempting to add AWS CLI to PATH...
                             set PATH=%PATH%;C:\\Program Files\\Amazon\\AWSCLIV2
                         )
                     '''
