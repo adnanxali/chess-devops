@@ -90,8 +90,11 @@ pipeline {
                         if %errorlevel% neq 0 (
                             echo Installing AWS CLI...
                             powershell -Command "Invoke-WebRequest -Uri 'https://awscli.amazonaws.com/AWSCLIV2.msi' -OutFile 'AWSCLIV2.msi'"
-                            msiexec /i AWSCLIV2.msi /quiet
+                            msiexec /i AWSCLIV2.msi /quiet /norestart
                             del AWSCLIV2.msi
+                            echo Refreshing PATH...
+                            refreshenv
+                            set PATH=%PATH%;C:\Program Files\Amazon\AWSCLIV2
                         )
                     '''
                 }
