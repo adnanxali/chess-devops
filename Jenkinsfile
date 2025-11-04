@@ -94,7 +94,7 @@ pipeline {
                             del AWSCLIV2.msi
                             echo Refreshing PATH...
                             refreshenv
-                            set PATH=%PATH%;C:\Program Files\Amazon\AWSCLIV2
+                            set PATH=%PATH%;C:\\Program Files\\Amazon\\AWSCLIV2
                         )
                     '''
                 }
