@@ -28,10 +28,72 @@ locals {
   ami_id = "ami-0036347a8a8be83f1"
 }
 
+# VPC
+resource "aws_vpc" "chess_vpc" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "chess-${var.environment}-vpc"
+    Environment = var.environment
+  }
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "chess_igw" {
+  vpc_id = aws_vpc.chess_vpc.id
+
+  tags = {
+    Name        = "chess-${var.environment}-igw"
+    Environment = var.environment
+  }
+}
+
+# Public Subnet
+resource "aws_subnet" "chess_public_subnet" {
+  vpc_id                  = aws_vpc.chess_vpc.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name        = "chess-${var.environment}-public-subnet"
+    Environment = var.environment
+  }
+}
+
+# Route Table
+resource "aws_route_table" "chess_public_rt" {
+  vpc_id = aws_vpc.chess_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.chess_igw.id
+  }
+
+  tags = {
+    Name        = "chess-${var.environment}-public-rt"
+    Environment = var.environment
+  }
+}
+
+# Route Table Association
+resource "aws_route_table_association" "chess_public_rta" {
+  subnet_id      = aws_subnet.chess_public_subnet.id
+  route_table_id = aws_route_table.chess_public_rt.id
+}
+
+# Data source for availability zones
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 # Security Group for Chess Application
 resource "aws_security_group" "chess_sg" {
   name_prefix = "chess-${var.environment}-${random_id.suffix.hex}-"
   description = "Security group for Chess application"
+  vpc_id      = aws_vpc.chess_vpc.id
 
   # SSH access
   ingress {
@@ -117,6 +179,7 @@ resource "aws_iam_instance_profile" "chess_instance_profile" {
 resource "aws_instance" "chess_app" {
   ami                    = local.ami_id
   instance_type          = var.instance_type
+  subnet_id              = aws_subnet.chess_public_subnet.id
   vpc_security_group_ids = [aws_security_group.chess_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.chess_instance_profile.name
 
